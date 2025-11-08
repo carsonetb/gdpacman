@@ -50,17 +50,8 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
         auto deps_path = clone_path / ".deps";
         if (filesystem::exists(deps_path) && filesystem::is_regular_file(deps_path)) {
             push_log(debug) << "This addon has a dependencies file, using." << end_log;
-            std::ifstream file_stream(deps_path.string());
-
-            if (!file_stream.is_open()) {
-                push_log(error) << ".deps file exists but cannot be opened." << end_log;
-                continue;
-            }
-
-            std::string content((std::istreambuf_iterator<char>(file_stream)), std::istreambuf_iterator<char>());
-            file_stream.close();
-
-            auto lines = split(content, "\n");
+            auto lines = read_file_lines(deps_path);
+            
             for (const std::string& line : lines) {
                 push_log(debug) << "Addon at path " << source << " has dependency " << line << ", adding." << end_log;
                 auto name = split(line, " ").front();
@@ -92,7 +83,12 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
             }
         }
 
-        push_log(debug) << "Finished initializing addon " << name << end_log;
+        if (filesystem::exists(deps_path)) {
+            push_log(debug) << "Moving .deps to the addon's folder." << end_log;
+            filesystem::copy(deps_path, project_addons / name / ".deps");
+        }
+
+        push_log(info) << "Finished initializing addon " << name << end_log;
 
         git_repository_free(source_repo);
     }
@@ -169,7 +165,7 @@ auto remove_addons(const filesystem::path& project_path, const std::vector<std::
 
         filesystem::remove_all(this_folder);
 
-        push_log(debug) << "Finished removing addon " << name << end_log;
+        push_log(info) << "Finished removing addon " << name << end_log;
     }
 
     push_log(debug) << "Reloading dependencies" << end_log;
