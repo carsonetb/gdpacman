@@ -6,6 +6,7 @@ This is a tool for Godot addons.
 
 - [Usage](#usage)
     - [For addon developers](#for-addon-developers)
+    - [Folder for this addon already exists message](#folder-for-this-addon-already-exists-message)
 - [Installation](#installation)
 
 ## Usage
@@ -54,6 +55,17 @@ gdpacman -r dialogic
 # OR
 gdpacman -r dialogic godot-aseprite-wizard
 ```
+
+### Folder for this addon already exists message
+
+If you get this message, it means either you 
+requested this addon to be installed or it was in
+a dependency, but the addon already exists. This
+could be caused simply by the addon already being
+installed, or maybe two addons use the same 
+dependency. Either way, it's usually safe to choose
+either option, but if you choose yes and the module
+was outdated, it will be updated.
 
 ### For addon developers
 
