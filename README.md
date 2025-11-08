@@ -2,6 +2,12 @@
 
 This is a tool for Godot addons.
 
+## Contents
+
+- [Usage](#usage)
+    - [For addon developers](#for-addon-developers)
+- [Installation](#installation)
+
 ## Usage
 
 This section assumes you have gdpacman globally
@@ -48,6 +54,24 @@ gdpacman -r dialogic
 # OR
 gdpacman -r dialogic godot-aseprite-wizard
 ```
+
+### For addon developers
+
+You may add dependencies as an addon developer 
+just like normal, and they will be added when the 
+user adds your addon (recursively). The only thing
+you have to do is register your addon folder, so
+the installer knows which folder is your addon
+and which is just a dependency (which will not be
+moved over). You can do this by running:
+
+```
+gdpacman --register {addon_folder_name}
+```
+
+`{addon_folder_name}` is the name of the folder
+that is in the addons directory 
+(`addons/{addon_folder_name}`).
 
 ## Installation
 
