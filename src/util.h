@@ -20,6 +20,17 @@ auto split(std::string string, const std::string& delimiter) -> std::vector<std:
     return tokens;
 }
 
+auto read_file(const boost::filesystem::path& path) -> std::string {
+    std::ifstream file(path);
+
+    if (file.is_open()) {
+        return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    }
+
+    push_log(warning) << "Tried to open a file: " << path << " but it could not be read." << end_log;
+    return {};
+}
+
 auto read_file_lines(const boost::filesystem::path& path) -> std::vector<std::string> {
     std::ifstream file(path);
 

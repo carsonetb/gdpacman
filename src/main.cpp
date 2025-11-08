@@ -7,6 +7,7 @@
 #include <boost/range/algorithm/find.hpp>
 #include <fstream>
 #include <git2.h>
+#include "boost/program_options/value_semantic.hpp"
 #include "git2/errors.h"
 #include "git2/repository.h"
 #include "git2/types.h"
@@ -48,20 +49,21 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
         }
 
         auto deps_path = clone_path / ".deps";
+        std::string addon_folder_name;
         if (filesystem::exists(deps_path) && filesystem::is_regular_file(deps_path)) {
             push_log(debug) << "This addon has a dependencies file, using." << end_log;
-            std::ifstream file_stream(deps_path.string());
+            auto lines = read_file_lines(deps_path);
+            addon_folder_name = lines[0]; // The first line of a .deps should be the folder name of the addon to use.
 
-            if (!file_stream.is_open()) {
-                push_log(error) << ".deps file exists but cannot be opened." << end_log;
+            if (addon_folder_name.find(' ') != std::string::npos) {
+                push_log(error) << "Invalid .deps format. The first line should be the name of the addon folder name (like addons/addon_folder_name would be addon_folder_name)" << end_log;
                 continue;
             }
 
-            std::string content((std::istreambuf_iterator<char>(file_stream)), std::istreambuf_iterator<char>());
-            file_stream.close();
-
-            auto lines = split(content, "\n");
             for (const std::string& line : lines) {
+                if (line == addon_folder_name || line.empty()) {
+                    continue;
+                }
                 push_log(debug) << "Addon at path " << source << " has dependency " << line << ", adding." << end_log;
                 auto name = split(line, " ").front();
                 sources.push_back(name);
@@ -78,18 +80,20 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
             git_repository_free(source_repo);
             return 1;
         }
-
+        
+        bool ignore_this = false;
         for (const auto& entry : filesystem::directory_iterator(source_addons)) {
-            if (filesystem::is_directory(entry)) {
+            if (filesystem::is_directory(entry) && (addon_folder_name.empty() || entry.path().filename().string() == addon_folder_name)) {
                 auto addon_folder = project_addons / name;
                 if (filesystem::exists(addon_folder)) {
-                    push_log(debug) << "Folder for this addon already exists, should it be deleted? (N/y) " << end_log;
+                    push_log(prompt) << "Folder for this addon already exists, should it be deleted? (N/y) " << end_log_no_newline;
                     std::string response;
-                    std::cin >> response;
+                    std::getline(std::cin, response);
                     if (response == "y") {
                         filesystem::remove_all(addon_folder);
                     }
                     else {
+                        ignore_this = true;
                         break;
                     }
                 }
@@ -99,10 +103,22 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
             }
         }
 
-        push_log(debug) << "Finished initializing addon " << name << end_log;
+        if (ignore_this) {
+            push_log(debug) << "Addon was not fully initialized, but that's okay because it already exists." << end_log;
+            continue;
+        }
+
+        if (filesystem::exists(deps_path)) {
+            push_log(debug) << "Moving .deps to the addon's folder." << end_log;
+            filesystem::copy(deps_path, project_addons / name / ".deps");
+        }
+
+        push_log(info) << "Finished initializing addon " << name << end_log;
 
         git_repository_free(source_repo);
     }
+
+    push_log(info) << "All addons added successfully!" << end_log;
 
     return 0;
 }
@@ -169,6 +185,9 @@ auto remove_addons(const filesystem::path& project_path, const std::vector<std::
             if (!lines.empty()) {
                 push_log(debug) << "Addon " << name << " has dependencies that you might want to remove, listing:" << end_log;
                 for (const auto& line : lines) {
+                    if (line.empty()) {
+                        continue;
+                    }
                     push_log(debug) << line << end_log;
                 }
             }
@@ -176,7 +195,7 @@ auto remove_addons(const filesystem::path& project_path, const std::vector<std::
 
         filesystem::remove_all(this_folder);
 
-        push_log(debug) << "Finished removing addon " << name << end_log;
+        push_log(info) << "Finished removing addon " << name << end_log;
     }
 
     push_log(debug) << "Reloading dependencies" << end_log;
@@ -207,7 +226,8 @@ auto main(int argc, char **argv) -> int {
         ("help,h", "produce (this) help message")
         ("remove,r", po::value<std::vector<std::string>>()->multitoken(), "names of addon(s) to remove.")
         ("url,u", po::value<std::vector<std::string>>()->multitoken(), "git url(s) of the package(s)")
-        ("project,p", po::value<std::string>(), "the path to the project where the package will be installed");
+        ("project,p", po::value<std::string>(), "the path to the project where the package will be installed")
+        ("register", po::value<std::string>(), "for addon developers, the name of the addon folder");
     
     po::variables_map varmap;
     po::store(po::parse_command_line(argc, argv, desc), varmap);
@@ -226,7 +246,24 @@ auto main(int argc, char **argv) -> int {
         push_log(debug) << "Using the current path as the project path." << end_log;
     }
 
-    if (varmap.count("remove") > 0) {
+    if (varmap.count("register") > 0) {
+        auto deps_lines = read_file_lines(project_path / ".deps");
+        auto deps_file = open(project_path / ".deps");
+        auto name = varmap["register"].as<std::string>();
+
+        if (deps_lines.front().find(' ') == std::string::npos) {
+            push_log(warning) << "Overriding old registered path which was " << deps_lines.front() << end_log;
+            deps_lines.erase(deps_lines.begin());
+        }
+
+        deps_file << name << '\n';
+        for (const std::string& line : deps_lines) {
+            deps_file << line << "\n";
+        }
+        deps_file.close();
+        push_log(info) << "Registered " << name << ". When your addon is installed, only this and your .deps file will be moved to the user's project." << end_log;
+    }
+    else if (varmap.count("remove") > 0) {
         remove_addons(project_path, varmap["remove"].as<std::vector<std::string>>());
     }
     else if (varmap.count("url") > 0) {
@@ -249,7 +286,7 @@ auto main(int argc, char **argv) -> int {
         init_deps(project_path, sources);
 
         if (init_sources(project_path, sources, repo) == 1) {
-            push_log(error) << "Failed to initialize sources, exiting." << end_log;
+            push_log(fatal) << "Failed to initialize sources! (Your .deps file may be corrupted, check it!)" << end_log;
             git_repository_free(repo);
             git_libgit2_shutdown();
             return 1;

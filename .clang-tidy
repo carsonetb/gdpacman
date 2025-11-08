@@ -8,5 +8,6 @@ Checks: '
     performance-*,
     readbility-*,
     -cppcoreguidelines-macro-usage,
+    -readability-function-cognitive-complexity,
 '
 HeaderFilterRegex: '^(?!.*(deps)/).*'

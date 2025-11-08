@@ -15,7 +15,8 @@ enum severity_level : uint8_t {
     info,
     warning,
     error,
-    fatal
+    fatal,
+    prompt,
 };
 
 static const std::unordered_map<uint8_t, std::string> severity_level_to_color = {
@@ -23,7 +24,8 @@ static const std::unordered_map<uint8_t, std::string> severity_level_to_color = 
     {info, "\033[38;5;112mINFO: "},
     {warning, "\033[4;38;5;220mWARNING: "},
     {error, "\033[1;31mERROR: "},
-    {fatal, "\033[1;38;5;232;48;5;160m: FATAL: "},
+    {fatal, "\033[1;38;5;232;48;5;160mFATAL: "},
+    {prompt, "\033[38;5;164mPROMPT: "},
 };
 
 auto push_log(uint8_t severity) -> std::ostream& {
