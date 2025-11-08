@@ -8,6 +8,7 @@ This is a tool for Godot addons.
     - [For addon developers](#for-addon-developers)
     - [Folder for this addon already exists message](#folder-for-this-addon-already-exists-message)
 - [Installation](#installation)
+- [Development](#development)
 
 ## Usage
 
@@ -119,3 +120,17 @@ Optionally you can install:
 ```
 cmake --install .
 ```
+
+## Development
+
+If you want to contribute, you should do so 
+by submitting a Pull Request on GitHub with 
+your changes. If you don't want to edit my crappy
+code, you can submit an Issue and I'll probably
+fix it.
+
+Development can be done in probably any software
+that supports CMake integration, but I personally
+use VSCode with the clangd, clang-tidy, clang++,
+Cmake, and Cmake Tools extensions, and everything
+works very nicely.
