@@ -61,7 +61,7 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
             }
 
             for (const std::string& line : lines) {
-                if (line == addon_folder_name) {
+                if (line == addon_folder_name || line.empty()) {
                     continue;
                 }
                 push_log(debug) << "Addon at path " << source << " has dependency " << line << ", adding." << end_log;
@@ -169,6 +169,9 @@ auto remove_addons(const filesystem::path& project_path, const std::vector<std::
             if (!lines.empty()) {
                 push_log(debug) << "Addon " << name << " has dependencies that you might want to remove, listing:" << end_log;
                 for (const auto& line : lines) {
+                    if (line.empty()) {
+                        continue;
+                    }
                     push_log(debug) << line << end_log;
                 }
             }
