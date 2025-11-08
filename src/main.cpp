@@ -83,8 +83,15 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
             if (filesystem::is_directory(entry)) {
                 auto addon_folder = project_addons / name;
                 if (filesystem::exists(addon_folder)) {
-                    push_log(debug) << "Folder for this addon already exists, deleting." << end_log;
-                    filesystem::remove_all(addon_folder);
+                    push_log(debug) << "Folder for this addon already exists, should it be deleted? (N/y) " << end_log;
+                    std::string response;
+                    std::cin >> response;
+                    if (response == "y") {
+                        filesystem::remove_all(addon_folder);
+                    }
+                    else {
+                        break;
+                    }
                 }
                 filesystem::create_directories(project_addons / name);
                 filesystem::copy(entry.path(), project_addons / name);
