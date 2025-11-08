@@ -20,6 +20,7 @@ add_executable(gdpacman
 target_link_libraries(gdpacman PRIVATE
     Boost::filesystem
     Boost::program_options
+    Boost::range
     libgit2package
 )
 
