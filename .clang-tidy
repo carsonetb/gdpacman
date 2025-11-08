@@ -1,0 +1,12 @@
+Checks: '
+    cppcoreguidelines-*,
+    readability-*,
+    modernize-*,
+    boost-*,
+    clang-analyzer-*,
+    concurrency-*,
+    performance-*,
+    readbility-*,
+    -cppcoreguidelines-macro-usage,
+'
+HeaderFilterRegex: '^(?!.*(deps)/).*'
