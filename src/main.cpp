@@ -5,20 +5,18 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/file_status.hpp>
 #include <boost/range/algorithm/find.hpp>
-#include <fstream>
-#include <git2.h>
 #include "boost/program_options/value_semantic.hpp"
-#include "git2/errors.h"
-#include "git2/repository.h"
-#include "git2/types.h"
-#include "logging.h"
 #include "boost/program_options/options_description.hpp"
 #include "boost/program_options/parsers.hpp"
 #include "boost/program_options/variables_map.hpp"
-#include "util.h"
+#include <git2.h>
+#include <fstream>
 #include <iterator>
 #include <string>
 #include <vector>
+
+#include "logging.h"
+#include "util.h"
 
 namespace po = boost::program_options;
 namespace filesystem = boost::filesystem;

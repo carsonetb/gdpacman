@@ -1,0 +1,10 @@
+[requires]
+boost/1.89.0
+libgit2/1.8.4
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[layout]
+cmake_layout

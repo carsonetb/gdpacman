@@ -1,5 +1,7 @@
 #pragma once
 
+#define VERSION "0.0.0"
+
 #include "boost/filesystem/path.hpp"
 #include "logging.h"
 #include <fstream>

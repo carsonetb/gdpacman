@@ -1,6 +1,0 @@
-[submodule "deps/boost"]
-	path = deps/boost
-	url = https://github.com/boostorg/boost
-[submodule "deps/libgit2"]
-	path = deps/libgit2
-	url = https://github.com/libgit2/libgit2
