@@ -30,6 +30,7 @@ Here are the features:
 - Dependency management
 - Simple plugin installation
 - Remove addons easily
+- Colorful verbose output so you know what is happening!
 - (Soon) automatically update all your addons
 
 ## Usage

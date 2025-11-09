@@ -1,5 +1,6 @@
 #pragma once
 
+#include "termcolor/termcolor.hpp"
 #include <cassert>
 #include <cstdint>
 #include <iostream>
@@ -7,8 +8,8 @@
 #include <string>
 #include <unordered_map>
 
-#define end_log "\033[0m\n"
-#define end_log_no_newline "\033[0m"
+#define end_log termcolor::reset << "\n"
+#define end_log_no_newline termcolor::reset
 
 enum severity_level : uint8_t {
     debug,
@@ -30,5 +31,21 @@ static const std::unordered_map<uint8_t, std::string> severity_level_to_color = 
 
 auto push_log(uint8_t severity) -> std::ostream& {
     assert(severity_level_to_color.count(severity));
-    return std::cout << severity_level_to_color.at(severity);
+    switch (severity) {
+        case debug:
+            return std::cout << termcolor::color<33>;
+        case info:
+            return std::cout << termcolor::color<112>;
+        case warning:
+            return std::cout << termcolor::underline << termcolor::color<220>;
+        case error:
+            return std::cout << termcolor::bold << termcolor::red;
+        case fatal:
+            return std::cout << termcolor::bold << termcolor::on_color<160>;
+        case prompt:
+            return std::cout << termcolor::color<164>;
+        default:
+            return std::cout;
+    }
+    return std::cout;
 }

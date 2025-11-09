@@ -5,6 +5,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(libgit2 REQUIRED)
 find_package(Boost REQUIRED)
+find_package(termcolor REQUIRED)
 
 add_executable(gdpacman
     src/main.cpp
@@ -16,6 +17,7 @@ target_link_libraries(gdpacman
     Boost::program_options
     Boost::boost
     Boost::json
+    termcolor::termcolor
 )
 
 target_include_directories(gdpacman PUBLIC 

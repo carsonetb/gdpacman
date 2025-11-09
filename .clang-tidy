@@ -9,5 +9,6 @@ Checks: '
     readbility-*,
     -cppcoreguidelines-macro-usage,
     -readability-function-cognitive-complexity,
+    -cppcoreguidelines-avoid-magic-numbers,
 '
 HeaderFilterRegex: '^(?!.*(deps)/).*'

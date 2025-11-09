@@ -8,12 +8,12 @@
 #include "boost/json/array.hpp"
 #include "boost/json/parse.hpp"
 #include "boost/json/serialize.hpp"
-#include "boost/program_options/value_semantic.hpp"
 #include "boost/program_options/options_description.hpp"
 #include "boost/program_options/parsers.hpp"
 #include "boost/program_options/variables_map.hpp"
 #include <git2.h>
 #include <fstream>
+#include <git2/global.h>
 #include <string>
 #include <vector>
 
@@ -26,7 +26,7 @@ namespace filesystem = boost::filesystem;
 
 #define log_help_and_return(text) push_log(warning) << text << end_log; push_log(info) << desc << end_log; return 1;
 
-auto init_sources(const filesystem::path& project_path, std::vector<std::string> sources, git_repository *repo) -> int {
+auto init_sources(const filesystem::path& project_path, std::vector<std::string> sources) -> int {
     auto clone_home = filesystem::path("/tmp/gdpacman");
 
     if (filesystem::exists(clone_home)) {
@@ -284,12 +284,13 @@ auto main(int argc, char **argv) -> int {
     po::options_description desc("gdpacman allowed options");
     desc.add_options()
         ("help,h", "produce (this) help message")
-        ("init", "initialize the .deps file")
-        ("remove,r", po::value<std::vector<std::string>>()->multitoken(), "names of addon(s) to remove.")
-        ("url,u", po::value<std::vector<std::string>>()->multitoken(), "git url(s) of the package(s)")
-        ("project,p", po::value<std::string>(), "the path to the project where the package will be installed")
-        ("register", po::value<std::string>(), "for addon developers, the name of the addon folder")
-        ("version,v", "get the gdpacman version");
+        ("version,v", "get the gdpacman version")
+        ("project,p", po::value<std::string>(), "the path to the project where the package will be installed, if not set the current working directory will be used")
+        ("init", "initialize the .deps file, this can be called once in a new project.")
+        ("remove,r", po::value<std::vector<std::string>>()->multitoken(), "names of addon(s) to remove, their folders will be deleted and they will be removed from the .deps file")
+        ("url,u", po::value<std::vector<std::string>>()->multitoken(), "git url(s) of the package(s) to be installed in the addons directory, and added to the .deps file")
+        ("update", "updates all the addons, beware that all folders will be deleted and recloned")
+        ("register", po::value<std::string>(), "for addon developers, the name of the addon folder");
     
     po::variables_map varmap;
     po::store(po::parse_command_line(argc, argv, desc), varmap);
@@ -313,7 +314,31 @@ auto main(int argc, char **argv) -> int {
         push_log(debug) << "Using the current path as the project path." << end_log;
     }
 
-    if (varmap.count("init") > 0) {
+    if (varmap.count("update") > 0) {
+        git_libgit2_init();
+        push_log(info) << "Reloading all sources. If you want the new version to be added, say yes to the prompt!" << end_log;
+        if (!filesystem::exists(project_path / ".deps")) {
+            push_log(error) << ".deps file doesn't exist, use gdpacman --init to initialize it." << end_log;
+            return 1;
+        }
+        std::vector<std::string> sources;
+        DepsFile file = create_deps_from_json(boost::json::parse(read_file(project_path / ".deps")));
+        if (file.invalid) {
+            push_log(error) << ".deps file is invalid." << end_log;
+            return 1;
+        }
+        for (const Source& source : file.sources) {
+            if (source.has_branch) {
+                sources.push_back(source.source + "::" + source.branch);
+            }
+            else {
+                sources.push_back(source.source);
+            }
+        }
+        init_sources(project_path, sources);
+        git_libgit2_shutdown();
+    }
+    else if (varmap.count("init") > 0) {
         auto canonical_path = filesystem::canonical(project_path);
         if (filesystem::exists(project_path / ".deps")) {
             push_log(error) << ".deps file already exists at path " << canonical_path << ". Exiting to save your dependencies!" << end_log;
@@ -361,27 +386,17 @@ auto main(int argc, char **argv) -> int {
 
         git_libgit2_init();
 
-        git_repository *repo = nullptr;
-        int open_error = git_repository_open(&repo, project_path.string().c_str());
-        if (open_error < 0) {
-            push_log(error) << "Git error trying to open repository: " << git_error_last()->message << end_log;
-            return 1;
-        }
-
         int init_error = init_deps(project_path, sources);
         if (init_error > 0) {
             push_log(error) << "Error initializing dependencies. Exiting" << end_log;
             return 1;
         }
 
-        if (init_sources(project_path, sources, repo) == 1) {
+        if (init_sources(project_path, sources) == 1) {
             push_log(fatal) << "Failed to initialize sources! (Your .deps file may be corrupted, check it!)" << end_log;
-            git_repository_free(repo);
             git_libgit2_shutdown();
             return 1;
         }
-
-        git_repository_free(repo);
 
         git_libgit2_shutdown();
     }
