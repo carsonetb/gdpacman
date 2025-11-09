@@ -225,7 +225,8 @@ auto main(int argc, char **argv) -> int {
         ("remove,r", po::value<std::vector<std::string>>()->multitoken(), "names of addon(s) to remove.")
         ("url,u", po::value<std::vector<std::string>>()->multitoken(), "git url(s) of the package(s)")
         ("project,p", po::value<std::string>(), "the path to the project where the package will be installed")
-        ("register", po::value<std::string>(), "for addon developers, the name of the addon folder");
+        ("register", po::value<std::string>(), "for addon developers, the name of the addon folder")
+        ("version,v", "get the gdpacman version");
     
     po::variables_map varmap;
     po::store(po::parse_command_line(argc, argv, desc), varmap);
@@ -233,7 +234,12 @@ auto main(int argc, char **argv) -> int {
 
     if (varmap.count("help") > 0) {
         push_log(info) << desc << end_log;
-        return 1;
+        return 0;
+    }
+
+    if (varmap.count("version") > 0) {
+        push_log(info) << "gdpacman version " << VERSION_MAJOR << "." << VERSION_MINOR << "." << VERSION_PATCH << end_log;
+        return 0;
     }
 
     filesystem::path project_path = ".";
