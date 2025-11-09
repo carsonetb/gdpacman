@@ -5,16 +5,19 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/file_status.hpp>
 #include <boost/range/algorithm/find.hpp>
+#include "boost/json/array.hpp"
+#include "boost/json/parse.hpp"
+#include "boost/json/serialize.hpp"
 #include "boost/program_options/value_semantic.hpp"
 #include "boost/program_options/options_description.hpp"
 #include "boost/program_options/parsers.hpp"
 #include "boost/program_options/variables_map.hpp"
 #include <git2.h>
 #include <fstream>
-#include <iterator>
 #include <string>
 #include <vector>
 
+#include "git2/clone.h"
 #include "logging.h"
 #include "util.h"
 
@@ -32,15 +35,25 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
     }
 
     while (!sources.empty()) {
-        const std::string source = sources.back();
+        std::string source = sources.back();
+        auto split_colon = split(source, "::");
+        std::string branch;
+        if (split_colon.size() > 1) {
+            source = split_colon.front();
+            branch = split_colon.back();
+        }
         sources.pop_back();
         auto name = split(source, "/").back();
         auto clone_path = clone_home / name;
 
-        push_log(debug) << "Cloning repo at " << source << end_log;
+        push_log(debug) << "Cloning repo at " << source << (branch.empty() ? ", default branch" : ", branch: " + branch) << end_log;
         
         git_repository *source_repo = nullptr;
-        int clone_error = git_clone(&source_repo, source.c_str(), clone_path.string().c_str(), nullptr);
+        git_clone_options clone_options = GIT_CLONE_OPTIONS_INIT;
+        if (!branch.empty()) {
+            clone_options.checkout_branch = branch.c_str();
+        }
+        int clone_error = git_clone(&source_repo, source.c_str(), clone_path.string().c_str(), &clone_options);
         if (clone_error < 0) {
             push_log(error) << "Git error when cloning repo: " << git_error_last()->message << end_log;
             return -1;
@@ -50,31 +63,30 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
         std::string addon_folder_name;
         if (filesystem::exists(deps_path) && filesystem::is_regular_file(deps_path)) {
             push_log(debug) << "This addon has a dependencies file, using." << end_log;
-            auto lines = read_file_lines(deps_path);
-            addon_folder_name = lines[0]; // The first line of a .deps should be the folder name of the addon to use.
-
-            if (addon_folder_name.find(' ') != std::string::npos) {
-                push_log(error) << "Invalid .deps format. The first line should be the name of the addon folder name (like addons/addon_folder_name would be addon_folder_name)" << end_log;
-                continue;
+            auto file = create_deps_from_json(boost::json::parse(read_file(deps_path)));
+            if (file.invalid || !file.has_addon_folder_path) {
+                push_log(error) << "The addon with the deps file just mentioned is invalid! Things are about to break. Also, contact the maintainer of the addon." << end_log;
+                return -1;
             }
+            addon_folder_name = split(file.addon_folder_path, "/").back();
 
-            for (const std::string& line : lines) {
-                if (line == addon_folder_name || line.empty()) {
-                    continue;
+            for (const Source& source : file.sources) {
+                push_log(debug) << "Addon at path " << source.path << " has dependency " << source.source << ", adding." << end_log;
+                std::string source_txt = source.source;
+                if (source.has_branch) {
+                    source_txt += "::" + source.branch;
                 }
-                push_log(debug) << "Addon at path " << source << " has dependency " << line << ", adding." << end_log;
-                auto name = split(line, " ").front();
-                sources.push_back(name);
+                sources.push_back(source.source);
             }
         }
-
-        push_log(debug) << "Copying contents of source addons folder to project addons." << end_log;
 
         auto source_addons = clone_path / "addons";
         auto project_addons = project_path / "addons";
 
+        push_log(debug) << "Copying contents of source addons folder to " << project_addons / name << end_log;
+
         if (!filesystem::exists(source_addons)) {
-            push_log(error) << "Cloned repo doesn't have an addons folder.";
+            push_log(error) << "Cloned repo doesn't have an addons folder." << end_log;
             git_repository_free(source_repo);
             return 1;
         }
@@ -107,7 +119,7 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
         }
 
         if (filesystem::exists(deps_path)) {
-            push_log(debug) << "Moving .deps to the addon's folder." << end_log;
+            push_log(debug) << "Moving .deps to the addons folder." << end_log;
             filesystem::copy(deps_path, project_addons / name / ".deps");
         }
 
@@ -121,44 +133,86 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
     return 0;
 }
 
-auto init_deps(const filesystem::path& project_path, std::vector<std::string> sources) -> void {
+auto init_deps(const filesystem::path& project_path, const std::vector<std::string>& sources) -> int {
     auto deps_path = project_path / ".deps";
 
-    if (filesystem::exists(deps_path)) {
-        std::ifstream ideps_file(deps_path);
+    if (!filesystem::exists(deps_path)) {
+        push_log(error) << ".deps file doesn't exist in this project. Use gdpacman --init to create it." << end_log;
+        return 1;
+    }
 
-        if (ideps_file.is_open()) {
-            std::string content((std::istreambuf_iterator<char>(ideps_file)), std::istreambuf_iterator<char>());
-            ideps_file.close();
+    std::vector<Source> write_sources;
 
-            auto lines = split(content, "\n");
-            for (const std::string& line : lines) {
-                if (line.empty()) {
-                    continue;
-                }
-                auto path = split(line, " ").front();
-                if (boost::range::find(sources, path) == sources.end()) {
-                    sources.push_back(path);
-                }
+    boost::json::array out_deps_array;
+    boost::json::value current_deps_val = boost::json::parse(read_file(deps_path));
+    if (!current_deps_val.is_object()) {
+        push_log(error) << "Invalid .deps format: It must be an object." << end_log;
+        return 1;
+    }
+    boost::json::object deps_file = current_deps_val.as_object();
+    if (!deps_file.contains("deps") || !deps_file.at("deps").is_array()) {
+        push_log(error) << "Invalid .deps format: It must have a deps value that is an array." << end_log;
+        return 1;
+    }
+    boost::json::array in_deps_array = deps_file.at("deps").as_array();
+    for (const auto& source : in_deps_array) {
+        write_sources.push_back(create_source_from_json(source));
+    }
+    bool has_addon_folder_path = false;
+    std::string addon_folder_path;
+    if (deps_file.contains("this")) {
+        has_addon_folder_path = true;
+        addon_folder_path = deps_file.at("this").as_string();
+    }
+
+    for (const auto& input : sources) {
+        std::string source = input;
+        auto split_colon = split(source, "::");
+        std::string branch;
+        if (split_colon.size() > 1) {
+            source = split_colon.front();
+            branch = split_colon.back();
+        }
+        Source this_source;
+        this_source.source = source;
+        this_source.path = (filesystem::path("addons") / get_name_from_source(this_source.source)).string();
+        if (!branch.empty()) {
+            this_source.has_branch = true;
+            this_source.branch = branch;
+        }
+        bool already_acquired = false;
+        for (const auto& source : write_sources) {
+            if (source.source == this_source.source) {
+                already_acquired = true;
+                break;
             }
         }
-        else {
-            push_log(warning) << "Can't read deps file (bust it exists), assuming it is empty." << end_log;
-        }
+        if (already_acquired) { continue; }
+        write_sources.push_back(this_source);
+    }
+
+    for (const auto& source : write_sources) {
+        out_deps_array.push_back(source.to_json());
+    }
+
+    boost::json::object out_deps;
+    out_deps["deps"] = out_deps_array;
+    if (has_addon_folder_path) {
+        out_deps["this"] = addon_folder_path;
     }
 
     push_log(debug) << "Writing sources to .deps file" << end_log;
-    std::ofstream deps_file(deps_path);
+    std::ofstream write_file(deps_path);
 
-    if (deps_file.is_open()) {
-        for (const auto& source : sources) {
-            deps_file << source << " " << split(source, "/").back() << "\n";
-        }
-        deps_file.close();
+    if (write_file.is_open()) {
+        write_file << boost::json::serialize(out_deps);
+        write_file.close();
     }
     else {
         push_log(error) << "Cannot write to .deps file" << end_log;
     }
+
+    return 0;
 }
 
 auto remove_addons(const filesystem::path& project_path, const std::vector<std::string>& names) -> void {
@@ -182,11 +236,14 @@ auto remove_addons(const filesystem::path& project_path, const std::vector<std::
 
             if (!lines.empty()) {
                 push_log(debug) << "Addon " << name << " has dependencies that you might want to remove, listing:" << end_log;
-                for (const auto& line : lines) {
-                    if (line.empty()) {
-                        continue;
+                auto file = create_deps_from_json(boost::json::parse(read_file(this_folder / ".deps")));
+                if (file.invalid) {
+                    push_log(warning) << "Nevermind, the .deps file is invalid" << end_log;
+                }
+                else {
+                    for (const Source& source : file.sources) {
+                        push_log(debug) << source.path << end_log;
                     }
-                    push_log(debug) << line << end_log;
                 }
             }
         }
@@ -197,24 +254,29 @@ auto remove_addons(const filesystem::path& project_path, const std::vector<std::
     }
 
     push_log(debug) << "Reloading dependencies" << end_log;
-    auto current_deps = read_file_lines(project_path / ".deps");
-    auto deps_file = open(project_path / ".deps");
-    for (const std::string& line : current_deps) {
-        if (line.empty()) {
-            continue;
-        }
-        auto dep_name = split(line, " ").back();
+    auto current_deps = create_deps_from_json(boost::json::parse(read_file(project_path / ".deps")));
+    DepsFile out_deps;
+    out_deps.has_addon_folder_path = current_deps.has_addon_folder_path;
+    out_deps.addon_folder_path = current_deps.addon_folder_path;
+    if (current_deps.invalid) {
+        push_log(error) << "Reload dependencies failed, .deps file is probably corrupted." << end_log;
+        return;
+    }
+    for (const Source& source : current_deps.sources) {
         bool removed = false;
+        auto name = split(source.path, "/").back();
         for (const std::string& removed_name : names) {
-            if (dep_name == removed_name) {
+            if (name == removed_name) {
                 removed = true;
                 break;
             }
         }
         if (!removed) {
-            deps_file << line << "\n";
+            out_deps.sources.push_back(source);
         }
     }
+    auto deps_file = open(project_path / ".deps");
+    deps_file << boost::json::serialize(out_deps.to_json());
     deps_file.close();
 }
 
@@ -222,6 +284,7 @@ auto main(int argc, char **argv) -> int {
     po::options_description desc("gdpacman allowed options");
     desc.add_options()
         ("help,h", "produce (this) help message")
+        ("init", "initialize the .deps file")
         ("remove,r", po::value<std::vector<std::string>>()->multitoken(), "names of addon(s) to remove.")
         ("url,u", po::value<std::vector<std::string>>()->multitoken(), "git url(s) of the package(s)")
         ("project,p", po::value<std::string>(), "the path to the project where the package will be installed")
@@ -250,22 +313,40 @@ auto main(int argc, char **argv) -> int {
         push_log(debug) << "Using the current path as the project path." << end_log;
     }
 
-    if (varmap.count("register") > 0) {
-        auto deps_lines = read_file_lines(project_path / ".deps");
+    if (varmap.count("init") > 0) {
+        auto canonical_path = filesystem::canonical(project_path);
+        if (filesystem::exists(project_path / ".deps")) {
+            push_log(error) << ".deps file already exists at path " << canonical_path << ". Exiting to save your dependencies!" << end_log;
+            return 1;
+        }
         auto deps_file = open(project_path / ".deps");
+        deps_file << boost::json::serialize(DepsFile().to_json());
+        deps_file.close();
+        push_log(info) << "Sucessfully initialized a project at path " << canonical_path << end_log;
+    }
+    else if (varmap.count("register") > 0) {
+        if (!filesystem::exists(project_path / ".deps")) {
+            push_log(error) << ".deps file doesn't exist, use gdpacman --init to initialize it." << end_log;
+            return 1;
+        }
+        DepsFile deps = create_deps_from_json(boost::json::parse(read_file(project_path / ".deps")));
+        if (deps.invalid) {
+            push_log(error) << ".deps file is invalid." << end_log;
+            return 1;
+        }
         auto name = varmap["register"].as<std::string>();
 
-        if (deps_lines.front().find(' ') == std::string::npos) {
-            push_log(warning) << "Overriding old registered path which was " << deps_lines.front() << end_log;
-            deps_lines.erase(deps_lines.begin());
+        if (deps.has_addon_folder_path) {
+            push_log(warning) << "Overriding old registered path which was " << deps.addon_folder_path << end_log;
         }
 
-        deps_file << name << '\n';
-        for (const std::string& line : deps_lines) {
-            deps_file << line << "\n";
-        }
+        deps.has_addon_folder_path = true;
+        deps.addon_folder_path = (filesystem::path("addons") / name).string();
+
+        auto deps_file = open(project_path / ".deps");
+        deps_file << boost::json::serialize(deps.to_json()) << "\n";
         deps_file.close();
-        push_log(info) << "Registered " << name << ". When your addon is installed, only this and your .deps file will be moved to the user's project." << end_log;
+        push_log(info) << "Registered " << deps.addon_folder_path << ". When your addon is installed, only this and your .deps file will be moved to the user's project." << end_log;
     }
     else if (varmap.count("remove") > 0) {
         remove_addons(project_path, varmap["remove"].as<std::vector<std::string>>());
@@ -287,7 +368,11 @@ auto main(int argc, char **argv) -> int {
             return 1;
         }
 
-        init_deps(project_path, sources);
+        int init_error = init_deps(project_path, sources);
+        if (init_error > 0) {
+            push_log(error) << "Error initializing dependencies. Exiting" << end_log;
+            return 1;
+        }
 
         if (init_sources(project_path, sources, repo) == 1) {
             push_log(fatal) << "Failed to initialize sources! (Your .deps file may be corrupted, check it!)" << end_log;

@@ -1,9 +1,11 @@
 # gdpacman
 
-This is a tool for Godot addons.
+This is a prototype tool for Godot addons.
 
 ## Contents
 
+- [Contents](#contents)
+- [Features](#features)
 - [Usage](#usage)
     - [For addon developers](#for-addon-developers)
     - [Folder for this addon already exists message](#folder-for-this-addon-already-exists-message)
@@ -12,6 +14,23 @@ This is a tool for Godot addons.
     - [Building on Linux](#building-on-linux)
     - [Building for Windows using MinGW](#building-for-windows-using-mingw)
 - [Development](#development)
+
+## Features
+
+What is the point of this tool? Mainly 
+dependencies. Sometimes you want to make 
+an addon that uses another one, so you don't
+have to reinvent the wheel. And while you *could*
+include that addon inside of your own project, 
+the user could end up installing multiple of 
+the same addon, which wouldn't be good.
+
+Here are the features:
+
+- Dependency management
+- Simple plugin installation
+- Remove addons easily
+- (Soon) automatically update all your addons
 
 ## Usage
 
@@ -39,7 +58,17 @@ gdpacman -p ../project
 ```
 
 Of course the above command won't do anything
-without other commands. If you want to install
+without other commands. First you should init
+your project:
+
+```
+gdpacman --init
+```
+
+This will create the `.deps` file in your 
+project's root.
+
+If you want to install
 a package you can use the `-u` or `--url` 
 flags, along with all the Git urls to add.
 Any of these is valid:
@@ -48,6 +77,13 @@ Any of these is valid:
 gdpacman -u https://github.com/coppolaemilio/dialogic
 # OR
 gdpacman -u https://github.com/viniciusgerevini/godot-aseprite-wizard https://github.com/coppolaemilio/dialogic
+```
+
+You can also specify a specific branch. After 
+the URL add `::{branch}`. For example:
+
+```
+gdpacman -u https://codeberg.org/godotsteam/godotsteam::gdextension-plugin
 ```
 
 Once packages are installed they can be removed
@@ -88,15 +124,6 @@ gdpacman --register {addon_folder_name}
 `{addon_folder_name}` is the name of the folder
 that is in the addons directory 
 (`addons/{addon_folder_name}`).
-
-### .deps format
-
-The `.deps` file format is very simple. The 
-first line is the name of the "master" addon
-path, if there is one. Every subsequent line 
-is the URL to the repository and the name of
-the addon folder, seperated by a space.
-Subdependencies are not included in this file.
 
 ## Installation
 

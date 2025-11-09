@@ -15,6 +15,7 @@ target_link_libraries(gdpacman
     Boost::filesystem
     Boost::program_options
     Boost::boost
+    Boost::json
 )
 
 target_include_directories(gdpacman PUBLIC 
