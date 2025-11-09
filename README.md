@@ -7,6 +7,7 @@ This is a tool for Godot addons.
 - [Usage](#usage)
     - [For addon developers](#for-addon-developers)
     - [Folder for this addon already exists message](#folder-for-this-addon-already-exists-message)
+    - [.deps format](#deps-format)
 - [Installation](#installation)
 - [Development](#development)
 
@@ -85,6 +86,15 @@ gdpacman --register {addon_folder_name}
 `{addon_folder_name}` is the name of the folder
 that is in the addons directory 
 (`addons/{addon_folder_name}`).
+
+### .deps format
+
+The `.deps` file format is very simple. The 
+first line is the name of the "master" addon
+path, if there is one. Every subsequent line 
+is the URL to the repository and the name of
+the addon folder, seperated by a space.
+Subdependencies are not included in this file.
 
 ## Installation
 
