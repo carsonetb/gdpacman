@@ -40,7 +40,7 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
         push_log(debug) << "Cloning repo at " << source << end_log;
         
         git_repository *source_repo = nullptr;
-        int clone_error = git_clone(&source_repo, source.c_str(), clone_path.c_str(), nullptr);
+        int clone_error = git_clone(&source_repo, source.c_str(), clone_path.string().c_str(), nullptr);
         if (clone_error < 0) {
             push_log(error) << "Git error when cloning repo: " << git_error_last()->message << end_log;
             return -1;

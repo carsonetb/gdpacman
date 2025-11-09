@@ -9,6 +9,8 @@ This is a tool for Godot addons.
     - [Folder for this addon already exists message](#folder-for-this-addon-already-exists-message)
     - [.deps format](#deps-format)
 - [Installation](#installation)
+    - [Building on Linux](#building-on-linux)
+    - [Building for Windows using MinGW](#building-for-windows-using-mingw)
 - [Development](#development)
 
 ## Usage
@@ -98,37 +100,106 @@ Subdependencies are not included in this file.
 
 ## Installation
 
-All of the dependencies of this library are 
-contained in submodules, so no installation 
-of any third party libraries are required.
+This project uses the [conan](https://conan.io/)
+package manager, because it makes it very easy 
+to export to both Windows and Linux.
 
-First you will need to clone the repo:
+### Building on Linux
 
-```
-git clone https://github.com/carsonetb/gdpacman.git
-cd gdpacman
-```
-
-Then add all the submodules:
+If you have just installed conan, you can 
+initialize the build profile. Some of these things
+(like the release flag), we will be overriding.
 
 ```
-git submodule init
-git submodule update --init --recursive
+conan profile detect --force
 ```
 
-Now you can build with cmake.
+Now you can install dependencies (specified in
+`conanfile.txt`):
 
 ```
-mkdir build
-cd build
-cmake ..
+conan install . --build=missing -s build_type=Debug
+```
+
+Instead of the `Debug` build type you can also
+use `Release`. Conan will generate a preset you 
+can run:
+
+```
+cmake --preset conan-debug
+```
+
+You can then build:
+
+```
+cd build/Debug
 cmake --build .
 ```
 
-Optionally you can install:
+And optionally install:
 
 ```
-cmake --install .
+sudo cmake --install .
+```
+
+### Building for Windows using MinGW
+
+We will use MinGW to build for Windows. So
+you should install the `mingw-w64` package
+on whatever distribution you are using.
+
+Create a MinGW profile (this will create
+a text file in /home/user/.conan2/profiles
+called mingw):
+
+```
+conan profile detect --name mingw
+```
+
+Open the file it creates and add this:
+
+```
+[settings]
+arch=x86_64
+build_type=Release
+compiler=gcc
+compiler.cppstd=gnu17
+compiler.libcxx=libstdc++11
+compiler.version=15
+os=Windows
+
+[options]
+boost/*:without_stacktrace=True
+
+[buildenv]
+CC=x86_64-w64-mingw32-gcc
+CXX=x86_64-w64-mingw32-g++
+AR=x86_64-w64-mingw32-ar
+RANLIB=x86_64-w64-mingw32-ranlib
+RC=x86_64-w64-mingw32-windres
+```
+
+Now go back to the project working directory 
+and install dependencies:
+
+```
+conan install . --profile mingw --build=missing
+# OR
+conan install . --profile mingw --build=missing -s build_type=Debug
+```
+
+This will generate a CMake Preset that you 
+can run:
+
+```
+cmake --preset conan-release
+```
+
+Now build:
+
+```
+cd build/Release
+cmake --build .
 ```
 
 ## Development

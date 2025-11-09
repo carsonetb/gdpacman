@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.23)
 project(gdpacman LANGUAGES C CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON) 
+
 find_package(libgit2 REQUIRED)
 find_package(Boost REQUIRED)
 
