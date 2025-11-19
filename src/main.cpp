@@ -17,17 +17,35 @@
 #include <string>
 #include <vector>
 
-#include "git2/clone.h"
+#include "git2/errors.h"
 #include "logging.h"
 #include "util.h"
+
+#ifdef _WIN32
+
+#include <windows.h>
+#include <shlobj.h> // For SHGetFolderPath
+
+#endif
 
 namespace po = boost::program_options;
 namespace filesystem = boost::filesystem;
 
 #define log_help_and_return(text) push_log(warning) << text << end_log; push_log(info) << desc << end_log; return 1;
 
-auto init_sources(const filesystem::path& project_path, std::vector<std::string> sources) -> int {
-    auto clone_home = filesystem::path("/tmp/gdpacman");
+auto init_sources(const filesystem::path& project_path, std::vector<std::string> sources, bool cache = false) -> int {
+    auto clone_home = filesystem::temp_directory_path() / "gdpacman";
+
+#ifdef _WIN32
+    TCHAR appdata_path[MAX_PATH];
+    SHGetFolderPath(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, appdata_path) == S_OK;
+    filesystem::path app_data_dir = filesystem::path(appdata_path) / "gdpacman"; 
+#elif __linux__
+    filesystem::path app_data_dir = filesystem::path(std::getenv("HOME")) / ".local" / "share" / "gdpacman";
+#else
+    filesystem::path app_data_dir;
+    log(error) << "Cannot find app data path!" << end_log;
+#endif
 
     if (filesystem::exists(clone_home)) {
         push_log(debug) << "Clearing temporary sources to prevent conflicts." << end_log;
@@ -53,13 +71,28 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
         if (!branch.empty()) {
             clone_options.checkout_branch = branch.c_str();
         }
+        bool cache_check = false;
         int clone_error = git_clone(&source_repo, source.c_str(), clone_path.string().c_str(), &clone_options);
         if (clone_error < 0) {
-            push_log(error) << "Git error when cloning repo: " << git_error_last()->message << end_log;
-            return -1;
+            if (git_error_last()->klass == GIT_ERROR_NET) {
+                push_log(warning) << "Your network isn't working, checking cache." << end_log;
+                cache_check = true;
+            }
+            else {
+                push_log(error) << "Git error when cloning repo: " << git_error_last()->message << "; Code: " << git_error_last()->klass << end_log;
+                return -1;
+            }
         }
 
-        auto deps_path = clone_path / ".deps";
+        if (cache_check) {
+            clone_path = app_data_dir;
+            if (!filesystem::exists(clone_path / name)) {
+                push_log(error) << "The addon does not exist in the cache, so it cannot be found." << end_log;
+                return -1; 
+            }
+        }
+
+        auto deps_path = cache_check ? clone_path / name / ".deps" : (clone_path / ".deps");
         std::string addon_folder_name;
         if (filesystem::exists(deps_path) && filesystem::is_regular_file(deps_path)) {
             push_log(debug) << "This addon has a dependencies file, using." << end_log;
@@ -80,8 +113,12 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
             }
         }
 
-        auto source_addons = clone_path / "addons";
-        auto project_addons = project_path / "addons";
+        if (cache_check) {
+            addon_folder_name = name;
+        }
+
+        auto source_addons = cache_check ? clone_path : (clone_path / "addons");
+        auto project_addons =  project_path / "addons";
 
         push_log(debug) << "Copying contents of source addons folder to " << project_addons / name << end_log;
 
@@ -109,6 +146,16 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
                 }
                 filesystem::create_directories(project_addons / name);
                 filesystem::copy(entry.path(), project_addons / name);
+                if (cache && !cache_check && !app_data_dir.empty()) {
+                    filesystem::path cache_dir = app_data_dir / name;
+                    push_log(debug) << "Caching to " << cache_dir << end_log;
+                    if (filesystem::exists(cache_dir)) {
+                        push_log(debug) << "Cache already exists, deleting." << end_log;
+                        filesystem::remove_all(cache_dir);
+                    }
+                    filesystem::create_directories(cache_dir);
+                    filesystem::copy(entry.path(), cache_dir);
+                }
                 break;
             }
         }
@@ -118,9 +165,12 @@ auto init_sources(const filesystem::path& project_path, std::vector<std::string>
             continue;
         }
 
-        if (filesystem::exists(deps_path)) {
+        if (filesystem::exists(deps_path) && !cache_check) { // The .deps file is already in the cache dir.
             push_log(debug) << "Moving .deps to the addons folder." << end_log;
             filesystem::copy(deps_path, project_addons / name / ".deps");
+            if (cache) {
+                filesystem::copy(deps_path, app_data_dir / name / ".deps");
+            }
         }
 
         push_log(info) << "Finished initializing addon " << name << end_log;
@@ -289,6 +339,7 @@ auto main(int argc, char **argv) -> int {
         ("init", "initialize the .deps file, this can be called once in a new project.")
         ("remove,r", po::value<std::vector<std::string>>()->multitoken(), "names of addon(s) to remove, their folders will be deleted and they will be removed from the .deps file")
         ("url,u", po::value<std::vector<std::string>>()->multitoken(), "git url(s) of the package(s) to be installed in the addons directory, and added to the .deps file")
+        ("nocache", "If this flag is enabled, the addon will not be cached to your local machine.")
         ("update", "updates all the addons, beware that all folders will be deleted and recloned")
         ("register", po::value<std::string>(), "for addon developers, the name of the addon folder");
     
@@ -392,7 +443,7 @@ auto main(int argc, char **argv) -> int {
             return 1;
         }
 
-        if (init_sources(project_path, sources) == 1) {
+        if (init_sources(project_path, sources, varmap.count("nocache") == 0) == 1) {
             push_log(fatal) << "Failed to initialize sources! (Your .deps file may be corrupted, check it!)" << end_log;
             git_libgit2_shutdown();
             return 1;
