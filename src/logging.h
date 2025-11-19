@@ -33,17 +33,17 @@ auto push_log(uint8_t severity) -> std::ostream& {
     assert(severity_level_to_color.count(severity));
     switch (severity) {
         case debug:
-            return std::cout << termcolor::color<33>;
+            return std::cout << termcolor::color<33> << "DEBUG: ";
         case info:
-            return std::cout << termcolor::color<112>;
+            return std::cout << termcolor::color<112> << "INFO: ";
         case warning:
-            return std::cout << termcolor::underline << termcolor::color<220>;
+            return std::cout << termcolor::underline << termcolor::color<220> << "WARNING: ";
         case error:
-            return std::cout << termcolor::bold << termcolor::red;
+            return std::cout << termcolor::bold << termcolor::red << "ERROR: ";
         case fatal:
-            return std::cout << termcolor::bold << termcolor::on_color<160>;
+            return std::cout << termcolor::bold << termcolor::on_color<160> << "FATAL: ";
         case prompt:
-            return std::cout << termcolor::color<164>;
+            return std::cout << termcolor::color<164> << "PROMPT: ";
         default:
             return std::cout;
     }
